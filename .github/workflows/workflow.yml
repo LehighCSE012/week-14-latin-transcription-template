@@ -1,39 +1,61 @@
+# .github/workflows/evaluate_transcription.yml
+
 name: Evaluate Transcription Script
 
+# Controls when the workflow will run
 on:
+  # Triggers the workflow on push events but only for the main/master branch
   push:
-    branches: [ main ] # Or 'master' depending on your default branch
+    branches: [ main, master ] # Adjust branch name if needed
     paths:
-      - 'transcription.py' # Only run if the script changes
-  workflow_dispatch: # Allows manual triggering
+      - 'transcription.py' # Only run if the student's script changes
 
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
+  # This workflow contains a single job called "evaluate"
   evaluate:
+    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Prevent runaway scripts/API calls
+    # Limit job execution time
+    timeout-minutes: 10
 
+    # Environment variables available to all steps in this job
     env:
       # The specific URL to be used for evaluation
       TARGET_IMAGE_URL: "http://aalt.law.uh.edu/CP25%281%29/CP25%281%29Nhants179/IMG_0275.JPG"
-      # IMPORTANT: Maps the GitHub Secret to the env var the student script expects
+      # IMPORTANT: Maps the GitHub Secret named LLM_API_KEY
+      # to an environment variable named LLM_API_KEY available to the student script.
+      # Ensure the secret exists in your Organization/Repo settings.
+      # Make sure students know to use os.getenv('LLM_API_KEY') in their script.
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
 
+    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Sets up Python environment
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Choose a suitable Python version
+        python-version: '3.10' # Or another version like '3.9', '3.11'
 
+    # Installs dependencies
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
+        # Install common libraries students might use + evaluation library
         pip install requests Pillow python-dotenv openai google-generativeai beautifulsoup4 opencv-python-headless jiwer
+        # Install student requirements if provided
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      # Fail the workflow if dependencies cannot be installed
       continue-on-error: false
 
+    # Checks if the required student file and function definition exist
     - name: Check for required file and function definition
       id: check_files
       run: |
@@ -41,25 +63,27 @@ jobs:
           echo "ERROR: transcription.py not found!"
           exit 1
         fi
-        # Check for the function definition pattern (accepts with or without type hints)
+        # Basic check for the function definition text pattern
+        # Allows for variations like type hints or no type hints
         if ! grep -q "def get_transcription(" transcription.py; then
           echo "ERROR: Function definition 'def get_transcription(...)' not found in transcription.py!"
           exit 1
         fi
         echo "Required file and function definition pattern found."
 
+    # Runs the student's script and performs the evaluation
     - name: Run Evaluation Script
       id: run_eval
       run: |
-        # Create a helper script to run student code safely and calculate CER
+        # Create a helper Python script to safely execute student code and calculate CER
         cat << 'EOF' > run_evaluation.py
         import os
         import sys
         import importlib
         import traceback
-        from jiwer import compute_measures
+        from jiwer import compute_measures # Using jiwer for CER calculation
 
-        STUDENT_SCRIPT = "transcription"
+        STUDENT_SCRIPT = "transcription" # Module name (filename without .py)
         TARGET_FUNCTION = "get_transcription"
         GROUND_TRUTH_FILE = "ground_truth.txt"
         API_KEY_NAME = 'LLM_API_KEY' # Standardized API key env var name
@@ -67,16 +91,27 @@ jobs:
 
         def calculate_score(cer):
             """Calculates score based on CER using linear interpolation."""
+            # Clamp CER between 0 and 1
             if cer < 0: cer = 0
             if cer > 1: cer = 1
 
-            if cer == 0.0: return 100.0
-            elif cer <= 0.50: return 100.0 + (cer - 0.0) * (50.0 - 100.0) / (0.50 - 0.0)
-            elif cer <= 0.95: return 50.0 + (cer - 0.50) * (5.0 - 50.0) / (0.95 - 0.50)
-            else: return 5.0
+            if cer == 0.0:
+                return 100.0
+            elif cer <= 0.50: # Between 0% and 50%
+                # Linear interpolation: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+                # Points: (0, 100), (0.5, 50)
+                score = 100.0 + (cer - 0.0) * (50.0 - 100.0) / (0.50 - 0.0)
+                return score
+            elif cer <= 0.95: # Between 50% and 95%
+                # Points: (0.5, 50), (0.95, 5)
+                score = 50.0 + (cer - 0.50) * (5.0 - 50.0) / (0.95 - 0.50)
+                return score
+            else: # CER > 95%
+                return 5.0
 
         print(f"--- Loading Ground Truth from {GROUND_TRUTH_FILE} ---")
         try:
+            # Ensure UTF-8 encoding is used for potentially complex characters
             with open(GROUND_TRUTH_FILE, 'r', encoding='utf-8') as f:
                 ground_truth = f.read().strip()
             if not ground_truth:
@@ -85,6 +120,7 @@ jobs:
             print("Ground truth loaded successfully.")
         except FileNotFoundError:
             print(f"ERROR: Ground truth file '{GROUND_TRUTH_FILE}' not found.")
+            print("Please ensure the instructor has added this file to the template repository.")
             sys.exit(1)
         except Exception as e:
             print(f"ERROR: Failed to read ground truth file: {e}")
@@ -100,16 +136,20 @@ jobs:
         print(f"--- Importing {TARGET_FUNCTION} from {STUDENT_SCRIPT}.py ---")
         student_transcription = None
         try:
+            # Ensure the current directory is in the Python path
             sys.path.insert(0, os.getcwd())
+            # Import the student's module
             module = importlib.import_module(STUDENT_SCRIPT)
+            # Check if the required function exists
             if not hasattr(module, TARGET_FUNCTION):
                 print(f"ERROR: Function '{TARGET_FUNCTION}' not found in {STUDENT_SCRIPT}.py.")
                 sys.exit(1)
 
+            # Get the student's function object
             get_transcription_func = getattr(module, TARGET_FUNCTION)
 
             print(f"--- Executing {STUDENT_SCRIPT}.{TARGET_FUNCTION}(image_url='{target_image_url}') ---")
-            # Check for API key presence
+            # Check for API key presence before running student code
             if not os.getenv(API_KEY_NAME):
                  print(f"ERROR: Environment variable {API_KEY_NAME} is not set.")
                  print("Ensure the LLM_API_KEY secret is configured in GitHub settings.")
@@ -118,11 +158,13 @@ jobs:
             # *** Call the student function WITH the target URL ***
             student_transcription = get_transcription_func(image_url=target_image_url)
 
+            # Validate the return type
             if not isinstance(student_transcription, str):
                 print(f"ERROR: The '{TARGET_FUNCTION}' function did not return a string.")
                 print(f"Returned type: {type(student_transcription)}")
                 sys.exit(1)
 
+            # Basic cleaning of the result
             student_transcription = student_transcription.strip()
             print("Student script executed successfully.")
 
@@ -135,60 +177,77 @@ jobs:
             print("--- Error Traceback ---")
             traceback.print_exc()
             print("--- End Traceback ---")
-            student_transcription = None # Indicate failure
+            # Set transcription to None to indicate failure but allow evaluation logic to proceed
+            student_transcription = None
 
         # --- Evaluation ---
         print("\n--- Evaluation ---")
-        cer = 1.0 # Default to 100% CER
+        cer = 1.0 # Default to 100% CER (worst case)
         score = 0.0 # Default to 0 points for non-functional script
 
         if student_transcription is None:
             print("Evaluation skipped due to script execution error.")
-            # Score remains 0
+            # Score remains 0 as per assignment rules for non-functional scripts
         elif not student_transcription:
              print("WARNING: Student script returned an empty transcription.")
-             cer = 1.0
-             score = calculate_score(cer) # Should be 5 points
+             cer = 1.0 # Treat empty transcription as 100% CER
+             score = calculate_score(cer) # Calculate score based on 100% CER (should be 5 points)
         else:
+            # Calculate CER only if transcription is valid
             try:
-                measures = compute_measures(ground_truth, student_transcription)
-                cer = measures['wer'] # jiwer calculates CER by default here
-                print(f"Character Error Rate (CER): {cer:.4f} ({cer*100:.2f}%)")
-                score = calculate_score(cer)
+                # Calculate CER using jiwer (default is character-level for WER when word_delimiter is space)
+                # Explicitly using word_level=False ensures character level comparison if needed.
+                measures = compute_measures(ground_truth, student_transcription) # word_level=False can be added for explicit char level
+                cer = measures['wer'] # jiwer uses 'wer' key for both word and char error rate depending on settings
+                print(f"Character Error Rate (CER): {cer:.4f} ({cer*100:.2f}%)") # Log the CER and percentage
+                score = calculate_score(cer) # Calculate score based on CER
             except Exception as e:
                 print(f"ERROR: Could not calculate CER. Error: {e}")
                 traceback.print_exc()
                 cer = 1.0 # Assign 100% CER on calculation error
-                score = 0.0 # Assign 0 points if CER calculation fails
+                score = 0.0 # Assign 0 points if CER calculation fails (treat as non-functional)
 
         print(f"Calculated Score: {score:.2f} / 100.0 Extra Credit Points")
 
-        # Output results for summary step
+        # --- Output results for use in later steps (like the summary) ---
+        cer_percent = cer * 100 # Calculate percentage here
         print(f"::set-output name=cer::{cer:.4f}")
         print(f"::set-output name=score::{score:.2f}")
+        # Output the calculated percentage, formatted to 2 decimal places
+        print(f"::set-output name=cer_percent::{cer_percent:.2f}")
+        # Output a preview of the transcription (first 100 chars)
         print(f"::set-output name=student_transcription_preview::{student_transcription[:100] if student_transcription else 'N/A'}...")
 
         EOF
 
-        # Execute the helper script
+        # Execute the created helper script
         python run_evaluation.py
 
+    # Displays a summary of the evaluation results
     - name: Display Results Summary
-      if: always() # Always run this step
+      # Ensures this step runs even if previous steps fail, to provide feedback
+      if: always()
       run: |
         echo "--- Evaluation Summary ---"
         echo "Target Image URL: ${{ env.TARGET_IMAGE_URL }}"
-        echo "Script Status: ${{ job.status }}"
+        echo "Script Execution Status: ${{ job.status }}" # Overall job status
+        echo "Evaluation Step Outcome: ${{ steps.run_eval.outcome }}" # Outcome of the evaluation script step
+
+        # Check if the evaluation step itself was successful before printing detailed results
         if [ "${{ steps.run_eval.outcome }}" == "success" ]; then
-          echo "CER: ${{ steps.run_eval.outputs.cer }} (${{ steps.run_eval.outputs.cer * 100 }}%)"
+          # Use the pre-calculated percentage output variable from the previous step
+          echo "CER: ${{ steps.run_eval.outputs.cer }} (${{ steps.run_eval.outputs.cer_percent }}%)"
           echo "Score: ${{ steps.run_eval.outputs.score }} / 100.0"
           echo "Student Transcription Preview: ${{ steps.run_eval.outputs.student_transcription_preview }}"
+        # Check if the file/function check failed
         elif [ "${{ steps.check_files.outcome }}" != "success" ]; then
-           echo "Evaluation failed: Required file or function definition missing."
+           echo "Evaluation failed: Required file 'transcription.py' or function 'get_transcription' definition missing."
            echo "Score: 0 / 100.0"
+        # Otherwise, assume failure during script execution or CER calculation
         else
            echo "Evaluation failed during script execution or CER calculation."
-           echo "Score: 0 / 100.0" # Non-functional script gets 0 points
-           echo "(Check logs above for specific errors)"
+           # Assign 0 points for non-functional script as per instructions
+           echo "Score: 0 / 100.0"
+           echo "(Check logs in the 'Run Evaluation Script' step above for specific errors)"
         fi
         echo "-------------------------"
