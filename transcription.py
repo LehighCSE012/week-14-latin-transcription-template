@@ -4,7 +4,7 @@ def get_transcription(image_url: str) -> str:
         Regis Anglie et ffrancie sexti a conquestu decimo septimo coram Iohanne ffortescu et Jacobo Strang' Regis Justiciariis
         passum Ricardo Neuton' et Thoma ffulthorp' Justiciariis Et postea in Octabis sancte Trinitatis Anno regnorum eiusdem
         regis henrici decimo octauo ibidem concessa et recordata coram prefatis Ricardo Jacobo Strang' Thoma et Willelmo
-        paston' Justiciariis et aliis domini Regis fidelibus tunc ibi presentibus Inter Robertum Isham querentem et Thomam Alyngton'
+        paston' Justiciariis et aliis domini Regis fidelibus tunc ibi presentibus Inter Robertum Isham querentem et Thomam Alyngton' 
         deforciantem de vno mesuagio Centum acris terre duodecim acris prati quatuordecim acris pasture duodecim
         denaratis redditus et redditu duodecim caponum et vnius libre piperis cum pertinenciis in parua bowdon'
         que margareta que fuit uxor Thome alyngton' tenet ad terminum vite Vnde placitum conuencionis summonitum
