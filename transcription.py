@@ -11,7 +11,7 @@ def get_transcription(image_url: str) -> str:
         fuit inter eos in eadem Curia Silicet quod predictus Thomas recognovit predicta tenementa et redditum cum pertinenciis esse jus ipsius
         Roberti Et concessit pro se et heredibus suis quod predicta tenementa et redditus cum pertinenciis que predicta margareta tenet ad terminum
         vite de hereditate predicti Thome in predicta Villa die quo hec concordia facta fuit Et que post decessum ipsius
-        margarete ad predictum Thomam et heredes suos debuerunt reverti post decessum ipsius margarete integre
+        margarete ad predictum Thomam et heredes suos debuerunt reverti post decessum ipsius margarete integre 
         remaneant predicto Roberto et heredibus suis Tenendum de Capitalibus dominis feodi illius per seruicia que ad predicta tenementa
         et redditum pertinent imperpetuum Et predictus Thomas et heredes sui Warantizabunt predicto Roberto et heredibus suis predicta
         tenementa et redditum cum pertinenciis contra omnes homines imperpetuum Et pro hac recognicione concessione Waranto fine et
